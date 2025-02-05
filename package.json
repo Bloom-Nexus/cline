@@ -161,6 +161,11 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Enables extension to save checkpoints of workspace throughout the task."
+				},
+				"cline.enableTelemetry": {
+					"type": "boolean",
+					"default": false,
+					"description": "Enables extension to post anonymous usage data to help improve the product."
 				}
 			}
 		}
