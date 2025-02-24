@@ -2,8 +2,7 @@ import os from "os"
 import osName from "os-name"
 import { getShell } from "../../../utils/shell"
 
-export function getSystemInfoPrompt(cwd: string): string {
-	return `
+export const systemInfoPrompt = (cwd: string) => `
 ====
 
 SYSTEM INFORMATION
@@ -11,6 +10,4 @@ SYSTEM INFORMATION
 Operating System: ${osName()}
 Default Shell: ${getShell()}
 Home Directory: ${os.homedir().toPosix()}
-Current Working Directory: ${cwd.toPosix()}
-`
-}
+Current Working Directory: ${cwd.toPosix()}`

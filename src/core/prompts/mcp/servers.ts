@@ -1,19 +1,6 @@
 import { McpHub } from "../../../services/mcp/McpHub"
 
-export function getMcpServersPrompt(mcpHub: McpHub): string {
-	const mcpMode = mcpHub.getMode()
-	if (mcpMode === "off") return ""
-	const connectedServers =
-		mcpHub
-			.getServers()
-			.filter((server) => server.status === "connected")
-			.map((server) => {
-				const config = JSON.parse(server.config)
-				const tools = server.tools?.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n") || ""
-				return `## ${server.name} (\`${config.command} ${config.args?.join(" ") || ""}\`)\n\n### Available Tools\n${tools}`
-			})
-			.join("\n\n") || "(No MCP servers currently connected)"
-	return `
+export const serversPrompt = (mcpHub: McpHub) => `
 ====
 
 MCP SERVERS
@@ -24,8 +11,40 @@ The Model Context Protocol (MCP) enables communication between the system and lo
 
 When a server is connected, you can use the server's tools via the \`use_mcp_tool\` tool, and access the server's resources via the \`access_mcp_resource\` tool.
 
-${connectedServers}
+${
+	mcpHub.getServers().length > 0
+		? `${mcpHub
+				.getServers()
+				.filter((server) => server.status === "connected")
+				.map((server) => {
+					const tools = server.tools
+						?.map((tool) => {
+							const schemaStr = tool.inputSchema
+								? `    Input Schema:
+    ${JSON.stringify(tool.inputSchema, null, 2).split("\n").join("\n    ")}`
+								: ""
 
-- MCP operations should be used one at a time, similar to other tool usage. Wait for confirmation of success before proceeding with additional operations.
-`
-}
+							return `- ${tool.name}: ${tool.description}\n${schemaStr}`
+						})
+						.join("\n\n")
+
+					const templates = server.resourceTemplates
+						?.map((template) => `- ${template.uriTemplate} (${template.name}): ${template.description}`)
+						.join("\n")
+
+					const resources = server.resources
+						?.map((resource) => `- ${resource.uri} (${resource.name}): ${resource.description}`)
+						.join("\n")
+
+					const config = JSON.parse(server.config)
+
+					return (
+						`## ${server.name} (\`${config.command}${config.args && Array.isArray(config.args) ? ` ${config.args.join(" ")}` : ""}\`)` +
+						(tools ? `\n\n### Available Tools\n${tools}` : "") +
+						(templates ? `\n\n### Resource Templates\n${templates}` : "") +
+						(resources ? `\n\n### Direct Resources\n${resources}` : "")
+					)
+				})
+				.join("\n\n")}`
+		: "(No MCP servers currently connected)"
+}`

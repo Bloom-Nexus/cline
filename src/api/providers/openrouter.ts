@@ -192,7 +192,8 @@ export class OpenRouterHandler implements ApiHandler {
 		}
 
 		if (genId) {
-			await delay(500) // FIXME: necessary delay to ensure generation endpoint is ready
+			console.log("OpenRouter genId:", genId) // Added logging to inspect genId
+			await delay(1000) // FIXME: necessary delay to ensure generation endpoint is ready, increased to 1000ms
 			try {
 				const generationIterator = this.fetchGenerationDetails(genId)
 				const generation = (await generationIterator.next()).value
@@ -213,7 +214,7 @@ export class OpenRouterHandler implements ApiHandler {
 		}
 	}
 
-	@withRetry({ maxRetries: 4, baseDelay: 250, maxDelay: 1000, retryAllErrors: true })
+	@withRetry({ maxRetries: 6, baseDelay: 500, maxDelay: 2000, retryAllErrors: true }) // Increased retries and delay
 	async *fetchGenerationDetails(genId: string) {
 		// console.log("Fetching generation details for:", genId)
 		try {

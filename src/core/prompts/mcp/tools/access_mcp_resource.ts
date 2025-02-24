@@ -1,5 +1,4 @@
-export function getAccessMcpResourcePrompt(): string {
-	return `
+export const accessMcpResourcePrompt = () => `
 ## access_mcp_resource
 Description: Request to access a resource provided by a connected MCP server. Resources represent data sources that can be used as context, such as files, API responses, or system information.
 Parameters:
@@ -10,5 +9,10 @@ Usage:
 <server_name>server name here</server_name>
 <uri>resource URI here</uri>
 </access_mcp_resource>
-`
-}
+
+## Example: Requesting to access an MCP resource
+
+<access_mcp_resource>
+<server_name>weather-server</server_name>
+<uri>weather://san-francisco/current</uri>
+</access_mcp_resource>`

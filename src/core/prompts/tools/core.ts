@@ -1,20 +1,27 @@
+import { executeCommandPrompt } from "./execute_command"
+import { readFilePrompt } from "./read_file"
+import { writeToFilePrompt } from "./write_to_file"
+import { replaceInFilePrompt } from "./replace_in_file"
+import { searchFilesPrompt } from "./search_files"
+import { listFilesPrompt } from "./list_files"
+import { listCodeDefinitionNamesPrompt } from "./list_code_definition_names"
+
 export function getCoreToolsPrompt(cwd: string): string {
 	return `
-TOOL USE
+# Tools
 
-You have access to a set of tools that are executed upon the user's approval. You can use one tool per message, and will receive the result of that tool use in the user's response.
+${executeCommandPrompt(cwd)}
 
-## execute_command
-Description: Request to execute a CLI command on the system. Use this when you need to perform system operations or run specific commands.
-Parameters:
-- command: (required) The CLI command to execute. This should be valid for the current operating system.
-- requires_approval: (required) A boolean indicating whether this command requires explicit user approval.
-Usage:
-<execute_command>
-<command>Your command here</command>
-<requires_approval>true or false</requires_approval>
-</execute_command>
+${readFilePrompt(cwd)}
 
-Current working directory: ${cwd.toPosix()}
+${writeToFilePrompt(cwd)}
+
+${replaceInFilePrompt(cwd)}
+
+${searchFilesPrompt(cwd)}
+
+${listFilesPrompt(cwd)}
+
+${listCodeDefinitionNamesPrompt(cwd)}
 `
 }

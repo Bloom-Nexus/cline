@@ -1,5 +1,4 @@
-export function getUseMcpToolPrompt(): string {
-	return `
+export const useMcpToolPrompt = () => `
 ## use_mcp_tool
 Description: Request to use a tool provided by a connected MCP server. Each MCP server can provide multiple tools with different capabilities. Tools have defined input schemas that specify required and optional parameters.
 Parameters:
@@ -17,5 +16,33 @@ Usage:
 }
 </arguments>
 </use_mcp_tool>
-`
+
+## Example 1: Requesting to use an MCP tool
+
+<use_mcp_tool>
+<server_name>weather-server</server_name>
+<tool_name>get_forecast</tool_name>
+<arguments>
+{
+  "city": "San Francisco",
+  "days": 5
 }
+</arguments>
+</use_mcp_tool>
+
+## Example 2: Another example of using an MCP tool (where the server name is a unique identifier such as a URL)
+
+<use_mcp_tool>
+<server_name>github.com/modelcontextprotocol/servers/tree/main/src/github</server_name>
+<tool_name>create_issue</tool_name>
+<arguments>
+{
+  "owner": "octocat",
+  "repo": "hello-world",
+  "title": "Found a bug",
+  "body": "I'm having a problem with this.",
+  "labels": ["bug", "help wanted"],
+  "assignees": ["octocat"]
+}
+</arguments>
+</use_mcp_tool>`
