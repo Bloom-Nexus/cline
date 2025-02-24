@@ -9,4 +9,5 @@ tmp
 
 pnpm-lock.yaml
 
-dynamic prompt system.md
+dynamic_prompt_system.md
+extended_dynamic_prompt_system.md
