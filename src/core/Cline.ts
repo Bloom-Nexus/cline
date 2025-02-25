@@ -27,6 +27,29 @@ import { ApiConfiguration } from "../shared/api"
 import { findLast, findLastIndex } from "../shared/array"
 import { AutoApprovalSettings } from "../shared/AutoApprovalSettings"
 import { BrowserSettings } from "../shared/BrowserSettings"
+import { basePrompt } from "./prompts/foundation/base"
+import { capabilitiesPrompt } from "./prompts/core_prompts/capabilities"
+import { editingPrompt } from "./prompts/core_prompts/editing"
+import { modesPrompt } from "./prompts/core_prompts/modes"
+import { objectivePrompt } from "./prompts/core_prompts/objective"
+import { rulesPrompt } from "./prompts/core_prompts/rules"
+import { systemInfoPrompt } from "./prompts/core_prompts/system_info"
+import { toolUsePrompt, toolExamples } from "./prompts/tools/tool_use"
+import {
+	askFollowupQuestionPrompt,
+	executeCommandPrompt,
+	listCodeDefinitionNamesPrompt,
+	listFilesPrompt,
+	planModeResponsePrompt,
+	readFilePrompt,
+	replaceInFilePrompt,
+	searchFilesPrompt,
+	writeToFilePrompt,
+	browserActionPrompt,
+	attemptCompletionPrompt,
+} from "./prompts/tools/index"
+import { addUserInstructions } from "./prompts/foundation/user_instructions"
+import { creationPrompt, serversPrompt, useMcpToolPrompt, accessMcpResourcePrompt } from "./prompts/mcp/index"
 import { ChatSettings } from "../shared/ChatSettings"
 import { combineApiRequests } from "../shared/combineApiRequests"
 import { combineCommandSequences, COMMAND_REQ_APP_STRING } from "../shared/combineCommandSequences"
@@ -59,8 +82,61 @@ import { formatResponse } from "./prompts/core_prompts/responses"
 import { SYSTEM_PROMPT } from "./prompts/foundation/system"
 import { getNextTruncationRange, getTruncatedMessages } from "./sliding-window"
 import { ClineProvider, GlobalFileNames } from "./webview/ClineProvider"
+import { McpHub } from "../services/mcp/McpHub"
+import * as tools from "./prompts/tools/index"
 
 const cwd = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath).at(0) ?? path.join(os.homedir(), "Desktop") // may or may not exist but fs checking existence would immediately ask for permission which would be bad UX, need to come up with a better solution
+
+function getDynamicSystemPrompt(
+	cwd: string,
+	supportsComputerUse: boolean,
+	mcpHub: McpHub,
+	customInstructions: string | undefined,
+	browserSettings: BrowserSettings,
+	usedToolNames: Set<string>,
+): string {
+	let systemPromptParts: string[] = []
+
+	// 1. Always Include Core Prompts:
+	systemPromptParts.push(basePrompt())
+	systemPromptParts.push(objectivePrompt())
+	systemPromptParts.push(modesPrompt())
+	systemPromptParts.push(rulesPrompt(cwd, supportsComputerUse, mcpHub)) // Assuming you still need cwd and computer use here
+	systemPromptParts.push(systemInfoPrompt(cwd)) // This is dynamic, so keep it
+	systemPromptParts.push(capabilitiesPrompt(cwd, supportsComputerUse, browserSettings))
+	systemPromptParts.push(toolUsePrompt())
+	systemPromptParts.push(toolExamples())
+
+	// 2. Add User Instructions (if any):
+	if (customInstructions) {
+		systemPromptParts.push(addUserInstructions(customInstructions))
+	}
+
+	// 3. Conditionally Add Tool-Specific Prompts:
+	for (const toolName of usedToolNames) {
+		const toolPromptFunction = (tools as any)[`${toolName}Prompt`]
+		if (typeof toolPromptFunction === "function") {
+			systemPromptParts.push(toolPromptFunction(cwd)) // Pass any required arguments
+		}
+	}
+
+	// 4. Conditionally add editingPrompt
+	if (usedToolNames.has("write_to_file") || usedToolNames.has("replace_in_file")) {
+		systemPromptParts.push(editingPrompt())
+	}
+
+	//Add MCP related prompts
+	if (mcpHub.getMode() !== "off") {
+		systemPromptParts.push(useMcpToolPrompt())
+		systemPromptParts.push(accessMcpResourcePrompt())
+		if (usedToolNames.has("use_mcp_tool") || usedToolNames.has("access_mcp_resource")) {
+			systemPromptParts.push(serversPrompt(mcpHub))
+		}
+	}
+
+	// 5. Combine the prompt parts:
+	return systemPromptParts.join("\n\n")
+}
 
 type ToolResponse = string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>
 type UserContent = Array<
@@ -1261,10 +1337,7 @@ export class Cline {
 
 		const disableBrowserTool = vscode.workspace.getConfiguration("cline").get<boolean>("disableBrowserTool") ?? false
 		const modelSupportsComputerUse = this.api.getModel().info.supportsComputerUse ?? false
-
 		const supportsComputerUse = modelSupportsComputerUse && !disableBrowserTool // only enable computer use if the model supports it and the user hasn't disabled it
-
-		let systemPrompt = await SYSTEM_PROMPT(cwd, supportsComputerUse, mcpHub, this.browserSettings)
 
 		// If the previous API request's total token usage is close to the context window, truncate the conversation history to free up space for the new request
 		if (previousApiReqIndex >= 0) {
@@ -1315,6 +1388,44 @@ export class Cline {
 		const truncatedConversationHistory = getTruncatedMessages(
 			this.apiConversationHistory,
 			this.conversationHistoryDeletedRange,
+		)
+		const userContent = this.apiConversationHistory[this.apiConversationHistory.length - 1].content
+
+		// --- Start of Modified Prompt Construction ---
+		const lastAssistantMessage = findLast(this.apiConversationHistory, (msg) => msg.role === "assistant")
+
+		const usedToolNames: Set<string> = new Set()
+
+		// Check previous assistant message for tool use. This is the *most* reliable indicator.
+		if (lastAssistantMessage && Array.isArray(lastAssistantMessage.content)) {
+			for (const block of lastAssistantMessage.content) {
+				if (block.type === "tool_use") {
+					usedToolNames.add(block.name)
+				}
+			}
+		}
+
+		// 4. Conditionally add editingPrompt
+		if (
+			usedToolNames.has("write_to_file") ||
+			usedToolNames.has("replace_in_file") ||
+			(typeof userContent === "string" && userContent.toLowerCase().includes("edit"))
+		) {
+			usedToolNames.add("editing")
+		}
+
+		//if user asks to create a server
+		if (typeof userContent === "string" && userContent.toLowerCase().includes("create")) {
+			usedToolNames.add("creation")
+		}
+
+		const systemPrompt = getDynamicSystemPrompt(
+			cwd,
+			supportsComputerUse,
+			mcpHub,
+			this.customInstructions,
+			this.browserSettings,
+			usedToolNames,
 		)
 
 		let stream = this.api.createMessage(systemPrompt, truncatedConversationHistory)
